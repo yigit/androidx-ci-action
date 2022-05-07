@@ -13,6 +13,9 @@ inputs:
   output-folder:
     description: 'The output folder to download results into'
     required: true
+  device-specs:
+    description: 'Specs for devices. e.g. redfin:30, sailfish:25'
+    required: true
 runs:
   using: "composite"
   steps:
@@ -26,3 +29,4 @@ runs:
         ANDROIDX_TARGET_RUN_ID: ${{ github.event.workflow_run.id || inputs.target-run-id }}
         ANDROIDX_HOST_RUN_ID: ${{ github.run_id }}
         ANDROIDX_OUTPUT_FOLDER: ${{ inputs.output-folder }}
+        ANDROIDX_DEVICE_SPECS: ${{ inputs.device-specs }}

@@ -20,6 +20,9 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.file
+import dev.androidx.ci.generated.ftl.AndroidDevice
+import dev.androidx.ci.generated.ftl.TestEnvironmentCatalog
+import dev.androidx.ci.testRunner.DevicePicker
 import dev.androidx.ci.testRunner.TestRunner
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -82,6 +85,15 @@ private class Cli : CliktCommand() {
         envvar = "GITHUB_REPOSITORY"
     ).required()
 
+    val deviceSpecs by option(
+        help = """
+            List of device - sdk pairs to run the tests.
+            Each spec should be in the form of <id>:<sdkVersion> concatenated by ','.
+            e.g. "redfin:30, sailfish:25"
+        """.trimIndent(),
+        envvar = "ANDROIDX_DEVICE_SPECS",
+    )
+
     override fun run() {
         configureLogger()
         val repoParts = githubRepository.split("/")
@@ -99,7 +111,8 @@ private class Cli : CliktCommand() {
                 ioDispatcher = Dispatchers.IO,
                 outputFolder = outputFolder,
                 githubOwner = githubOwner,
-                githubRepo = githubRepo
+                githubRepo = githubRepo,
+                devicePicker = deviceSpecs?.let(::createDevicePicker)
             )
             testRunner.runTests()
         }
@@ -145,6 +158,73 @@ private class Cli : CliktCommand() {
     private fun flushLogs() {
         val ctx = LogManager.getContext(false) as LoggerContext
         ctx.stop(10, TimeUnit.SECONDS)
+    }
+
+    fun createDevicePicker(
+        rawInput: String
+    ): DevicePicker {
+        val specs = DeviceSpec.parseSpecs(rawInput)
+        check(specs.isNotEmpty()) {
+            "Empty device specs: $rawInput"
+        }
+        return { catalog: TestEnvironmentCatalog ->
+            val models = checkNotNull(catalog.androidDeviceCatalog?.models) {
+                "No models in the environment catalog: $catalog"
+            }
+            specs.map { spec ->
+                // validate we have a matching model.
+                val model = models.find {
+                    it.id == spec.deviceId && it.supportedVersionIds?.contains(spec.sdk) == true
+                }
+                checkNotNull(model) {
+                    "Cannot find $spec in models: $models"
+                }
+                AndroidDevice(
+                    orientation = "portrait",
+                    androidModelId = model.id,
+                    locale = "en",
+                    androidVersionId = spec.sdk
+                )
+            }
+        }
+    }
+}
+
+data class DeviceSpec(
+    val deviceId: String,
+    val sdk: String
+) {
+    companion object {
+        private fun parseSpec(spec: String): DeviceSpec {
+            @Suppress("NAME_SHADOWING")
+            val spec = spec.trim()
+            val parts = spec.split(":")
+            require(parts.size == 2) {
+                """
+                        Each device spec should have two parts separated by ':'.
+                        Invalid input: $spec
+                    """
+            }
+            val deviceId = parts[0].trim().also {
+                require(it.isNotBlank()) {
+                    "Device id cannot be blank"
+                }
+            }
+            val sdkVersion = parts[1].trim().also {
+                require(it.isNotBlank()) {
+                    "SDK cannot be blank"
+                }
+            }
+            return DeviceSpec(
+                deviceId = deviceId,
+                sdk = sdkVersion
+            )
+        }
+        fun parseSpecs(input: String): List<DeviceSpec> {
+            return input.split(",").map {
+                it.trim()
+            }.map(::parseSpec)
+        }
     }
 }
 
