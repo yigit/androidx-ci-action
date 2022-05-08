@@ -16,6 +16,19 @@ inputs:
   device-specs:
     description: 'Specs for devices. e.g. redfin:30, sailfish:25'
     required: true
+  log-file:
+    description: 'Log file to export test runner logs.'
+    required: false
+  artifact-name-filter-regex:
+    description: 'A regex (kotlin) to filter artifact names when looking for APKs.'
+    required: false
+  gcp-bucket-name:
+    description: 'The name of the GCP Cloud Storage bucket that will be used to keep artifacts and results'
+    required: true
+  gcp-bucket-path:
+    description: 'The folder to use inside the bucket'
+    required: true
+
 runs:
   using: "composite"
   steps:
@@ -30,3 +43,7 @@ runs:
         ANDROIDX_HOST_RUN_ID: ${{ github.run_id }}
         ANDROIDX_OUTPUT_FOLDER: ${{ inputs.output-folder }}
         ANDROIDX_DEVICE_SPECS: ${{ inputs.device-specs }}
+        ANDROIDX_LOG_FILE: ${{ inputs.log-file }}
+        ANDROIDX_ARTIFACT_NAME_FILTER_REGEX: ${{ inputs.artifact-name-filter-regex }}
+        ANDROIDX_BUCKET_NAME: ${{ inputs.gcp-bucket-name }}
+        ANDROIDX_BUCKET_PATH: ${{ inputs.gcp-bucket-path }}

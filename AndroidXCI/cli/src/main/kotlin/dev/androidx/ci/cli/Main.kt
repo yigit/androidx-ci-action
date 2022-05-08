@@ -31,6 +31,7 @@ import org.apache.logging.log4j.LogManager
 import org.apache.logging.log4j.core.LoggerContext
 import org.apache.logging.log4j.core.appender.FileAppender
 import org.apache.logging.log4j.core.layout.PatternLayout
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
 
@@ -77,6 +78,14 @@ private class Cli : CliktCommand() {
         envvar = "ANDROIDX_OUTPUT_FOLDER"
     ).file(canBeFile = false, canBeDir = true).required()
 
+    val logFile by option(
+        help = """
+            The output file for test runner logs. Make sure this is different from the output
+            folder so that it will not be deleted when outputs are being downloaded
+        """.trimIndent(),
+        envvar = "ANDROIDX_LOG_FILE"
+    ).file(canBeFile = true, canBeDir = false)
+
     val githubRepository by option(
         help = """
             The github repository which is running this action.
@@ -94,14 +103,40 @@ private class Cli : CliktCommand() {
         envvar = "ANDROIDX_DEVICE_SPECS",
     )
 
+    val artifactNameRegex by option(
+        help = """
+            Regex to filter artifacts. If empty, all artifacts will be checked for apks which
+            might be too big.
+            e.g. "tests*zip"
+        """.trimIndent(),
+        envvar = "ANDROIDX_ARTIFACT_NAME_FILTER_REGEX"
+    )
+
+    val gcpBucketName by option(
+        help = """
+            Bucket name to use for artifacts
+        """.trimIndent(),
+        envvar = "ANDROIDX_BUCKET_NAME"
+    ).required()
+
+    val gcpBucketPath by option(
+        help = """
+            Bucket path to use for artifacts
+        """.trimIndent(),
+        envvar = "ANDROIDX_BUCKET_PATH"
+    ).required()
+
     override fun run() {
-        configureLogger()
+        logFile?.let(::configureLogger)
         val repoParts = githubRepository.split("/")
         check(repoParts.size >= 2) {
             "invalid github repo: $githubRepository"
         }
         val githubOwner = repoParts.first()
         val githubRepo = repoParts.drop(1).joinToString("/")
+        val artifactNameFilter = artifactNameRegex?.let { input ->
+            createRegexArtifactFilter(input)
+        } ?: acceptAll
         val result = runBlocking {
             val testRunner = TestRunner.create(
                 targetRunId = targetRunId,
@@ -112,7 +147,10 @@ private class Cli : CliktCommand() {
                 outputFolder = outputFolder,
                 githubOwner = githubOwner,
                 githubRepo = githubRepo,
-                devicePicker = deviceSpecs?.let(::createDevicePicker)
+                devicePicker = deviceSpecs?.let(::createDevicePicker),
+                artifactNameFilter = artifactNameFilter,
+                bucketName = gcpBucketName,
+                bucketPath = gcpBucketPath
             )
             testRunner.runTests()
         }
@@ -128,15 +166,30 @@ private class Cli : CliktCommand() {
         }
     }
 
+    private val acceptAll = { _: String ->
+        true
+    }
+
+    private fun createRegexArtifactFilter(
+        input: String
+    ): (String) -> Boolean {
+        val regex = input.toRegex()
+        return { artifactName ->
+            regex.matches(artifactName)
+        }
+    }
     /**
      * Add new logger to log into the output directory.
      */
-    private fun configureLogger() {
+    private fun configureLogger(
+        logFile: File
+    ) {
+        logFile.parentFile.mkdirs()
         val ctx = LogManager.getContext(false) as LoggerContext
         val config = ctx.configuration
         val layout = PatternLayout.createDefaultLayout(config)
         val appender = FileAppender.newBuilder<FileAppender.Builder<*>>()
-            .withFileName(outputFolder.resolve("logs.txt").absolutePath)
+            .withFileName(logFile.absolutePath)
             .withAppend(false)
             .withImmediateFlush(false)
             .setName("File")

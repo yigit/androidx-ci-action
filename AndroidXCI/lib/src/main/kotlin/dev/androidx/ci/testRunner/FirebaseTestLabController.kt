@@ -166,8 +166,7 @@ internal class FirebaseTestLabController(
             logger.info {
                 "updated matrix: $updated"
             }
-            val outcomeSummary = updated.outcomeSummary
-            if (outcomeSummary != null) {
+            if (updated.isComplete()) {
                 completed.add(updated)
                 pending.removeAt(nextMatrixIndex)
             } else {
@@ -219,3 +218,11 @@ internal class FirebaseTestLabController(
         private const val TEST_APK_SUFFIX = "-androidTest.apk"
     }
 }
+
+private val incompleteStates = setOf(
+    TestMatrix.State.TEST_STATE_UNSPECIFIED,
+    TestMatrix.State.VALIDATING,
+    TestMatrix.State.PENDING,
+    TestMatrix.State.RUNNING,
+)
+internal fun TestMatrix.isComplete() = state != null && state !in incompleteStates

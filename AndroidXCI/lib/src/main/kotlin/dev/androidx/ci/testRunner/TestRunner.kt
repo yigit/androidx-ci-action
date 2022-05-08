@@ -33,6 +33,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import okhttp3.logging.HttpLoggingInterceptor
 import org.apache.logging.log4j.kotlin.logger
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -72,6 +73,10 @@ class TestRunner internal constructor(
      * The directory where results will be saved locally
      */
     private val outputFolder: File? = null,
+    /**
+     * Device picker
+     */
+    private val devicePicker: DevicePicker? = null
 ) {
     private val logger = logger()
     private val testMatrixStore = TestMatrixStore(
@@ -110,7 +115,8 @@ class TestRunner internal constructor(
                     logger.info { "will start tests for these apks: $uploadedApks" }
                     testLabController.pairAndStartTests(
                         apks = uploadedApks,
-                        placeholderApk = apkStore.getPlaceholderApk()
+                        placeholderApk = apkStore.getPlaceholderApk(),
+                        devicePicker = devicePicker
                     ).also { testMatrices ->
                         logger.info { "started all tests for $testMatrices" }
                     }
@@ -182,7 +188,11 @@ class TestRunner internal constructor(
             ioDispatcher: CoroutineDispatcher,
             outputFolder: File?,
             githubOwner: String,
-            githubRepo: String
+            githubRepo: String,
+            bucketName: String,
+            bucketPath: String,
+            devicePicker: DevicePicker? = null,
+            artifactNameFilter: (String) -> Boolean = { true },
         ): TestRunner {
             val credentials = ServiceAccountCredentials.fromStream(
                 googleCloudCredentials.byteInputStream(Charsets.UTF_8)
@@ -195,8 +205,8 @@ class TestRunner internal constructor(
                 googleCloudApi = GoogleCloudApi.build(
                     Config.CloudStorage(
                         gcp = gcpConfig,
-                        bucketName = "androidx-ftl-test-results",
-                        bucketPath = "github-ci-action",
+                        bucketName = bucketName,
+                        bucketPath = bucketPath,
                     ),
                     context = ioDispatcher
                 ),
@@ -210,7 +220,7 @@ class TestRunner internal constructor(
                 firebaseTestLabApi = FirebaseTestLabApi.build(
                     config = Config.FirebaseTestLab(
                         gcp = gcpConfig
-                    )
+                    ),
                 ),
                 projectId = gcpConfig.projectId,
                 datastoreApi = DatastoreApi.build(
@@ -226,13 +236,12 @@ class TestRunner internal constructor(
                     )
                 ),
                 githubArtifactFilter = { artifact ->
-                    ALLOWED_ARTIFACTS.any {
-                        artifact.name.contains(it)
-                    }
+                    artifactNameFilter(artifact.name)
                 },
                 outputFolder = outputFolder,
                 targetRunId = targetRunId,
-                hostRunId = hostRunId
+                hostRunId = hostRunId,
+                devicePicker = devicePicker
             )
         }
 
