@@ -33,7 +33,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import okhttp3.logging.HttpLoggingInterceptor
 import org.apache.logging.log4j.kotlin.logger
 import java.io.File
 import java.util.concurrent.TimeUnit
